@@ -4,7 +4,7 @@ export const saveUser = async (email, tokens) => {
   await db.collection("users").doc(email).set(
     {
       email,
-      tokens,
+      phones,
       lastHistoryId: null,
       filters: {},
       phone: null,

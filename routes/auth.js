@@ -1,33 +1,40 @@
 import express from "express";
-import { createOAuthClient, gmailClient } from "../config/google.js";
-import { saveUser } from "../db/users.js";
-import { setupWatch } from "../services/gmailService.js";
+import { db } from "../config/firebase.js";
 
 const router = express.Router();
 
-router.get("/google", (req, res) => {
-  const oauth = createOAuthClient();
-  const url = oauth.generateAuthUrl({
+// Step 1: generate auth URL
+router.get("/authorize/:email", async (req, res) => {
+  const { email } = req.params;
+
+  const userSnap = await db.collection("users").doc(email).get();
+  if (!userSnap.exists) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  const oauth2Client = createOAuthClient();
+  const url = oauth2Client.generateAuthUrl({
     access_type: "offline",
     scope: ["https://www.googleapis.com/auth/gmail.readonly"],
   });
-  res.redirect(url);
+
+  res.json({ url });
 });
 
-router.get("/oauth2callback", async (req, res) => {
-  const oauth = createOAuthClient();
+// Step 2: handle OAuth callback
+router.get("/oauth2callback/:email", async (req, res) => {
   const { code } = req.query;
-  const { tokens } = await oauth.getToken(code);
-  oauth.setCredentials(tokens);
+  const { email } = req.params;
 
-  const gmail = gmailClient(oauth);
-  const profile = await gmail.users.getProfile({ userId: "me" });
-  const email = profile.data.emailAddress;
+  const oauth2Client = createOAuthClient();
+  const { tokens } = await oauth2Client.getToken(code);
 
-  await saveUser(email, tokens);
-  await setupWatch(oauth, email);
+  await db.collection("users").doc(email).update({
+    gmailTokens: tokens,
+    enabled: true,
+  });
 
-  res.send(" Connected successfully! You’ll now get text alerts.");
+  res.send("✅ Gmail connected! You can close this window.");
 });
 
 export default router;

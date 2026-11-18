@@ -1,11 +1,17 @@
-import React from "react";
-import { Link } from "react-router-dom";
+import { Flex, Heading, Link } from "@chakra-ui/react";
+import { Link as RouterLink } from "react-router-dom";
 
 export default function Navbar() {
   return (
-    <nav className="flex gap-4 bg-gray-100 p-4 shadow">
-      <Link to="/">Dashboard</Link>
-      <Link to="/connect">Connect Gmail</Link>
-    </nav>
+    <Flex
+      as="nav"
+      justify="space-between"
+      align="center"
+      p={4}
+      bg="blue.500"
+      color="white"
+    >
+      <Heading size="md">My App</Heading>
+    </Flex>
   );
 }

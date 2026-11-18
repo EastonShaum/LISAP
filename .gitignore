@@ -1,3 +1,9 @@
+# Secrets — never commit these
+serviceAccountKey.json
+credentials.json
+token.json
+testData.txt
+
 # Logs
 logs
 *.log
