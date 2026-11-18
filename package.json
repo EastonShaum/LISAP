@@ -10,8 +10,9 @@
     "server": "nodemon index.js",
     "client": "npm start --prefix client",
     "tunnel": "cloudflared tunnel run lisap",
-    "watch": "node watch.js",
-    "dev": "concurrently \"npm run server\" \"npm run client\" \"npm run tunnel\""
+    "watch": "node -e \"import('./services/gmailWatch.js').then(m=>m.startWatch()).then(()=>process.exit(0))\"",
+    "dev": "concurrently \"npm run server\" \"npm run client\" \"npm run tunnel\"",
+    "test": "node --test test/*.test.js"
   },
   "keywords": [],
   "author": "",
@@ -19,13 +20,11 @@
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.1",
     "@google-cloud/pubsub": "^5.2.0",
-    "body-parser": "^2.2.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "firebase-admin": "^13.5.0",
-    "googleapis": "^168.0.0",
-    "twilio": "^5.10.3"
+    "googleapis": "^168.0.0"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

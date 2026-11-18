@@ -29,6 +29,9 @@ export default function Onboarding() {
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [confirmation, setConfirmation] = useState(null);
+  const [checkingCode, setCheckingCode] = useState(false);
+  const [codeMessage, setCodeMessage] = useState("");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -86,6 +89,29 @@ export default function Onboarding() {
     } else {
       setCopiedInvite(true);
       setTimeout(() => setCopiedInvite(false), 2000);
+    }
+  }
+
+  // Gmail emails a confirmation code to the LISAP address before it will
+  // forward anything there. The server saves that code on the user's record.
+  async function checkForConfirmationCode() {
+    setCheckingCode(true);
+    setCodeMessage("");
+    try {
+      const idToken = await currentUser.getIdToken();
+      const res = await fetch(`${process.env.REACT_APP_API_URL || ""}/api/users/me`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const data = await res.json();
+      if (data.forwardingConfirmation?.code || data.forwardingConfirmation?.link) {
+        setConfirmation(data.forwardingConfirmation);
+      } else {
+        setCodeMessage("No code yet. It usually arrives within a minute of adding the address in Gmail.");
+      }
+    } catch {
+      setCodeMessage("Couldn't reach LISAP. Try again in a moment.");
+    } finally {
+      setCheckingCode(false);
     }
   }
 
@@ -179,7 +205,54 @@ export default function Onboarding() {
 
           <Divider />
 
-          <Text fontWeight="semibold" fontSize="md">How to create the filter in Gmail:</Text>
+          <Text fontWeight="semibold" fontSize="md">First, let Gmail forward to this address:</Text>
+
+          <OrderedList spacing={3} pl={2}>
+            <ListItem>
+              In Gmail, open <strong>Settings → See all settings → Forwarding and POP/IMAP</strong>.
+            </ListItem>
+            <ListItem>
+              Click <strong>Add a forwarding address</strong>, paste your LISAP address, and click{" "}
+              <strong>Next → Proceed</strong>. Gmail sends a confirmation code to LISAP.
+            </ListItem>
+            <ListItem>
+              <VStack align="stretch" spacing={2}>
+                <Text>Get the code here, then type it into the box Gmail shows and click <strong>Verify</strong>:</Text>
+                <Button
+                  size="sm"
+                  alignSelf="flex-start"
+                  onClick={checkForConfirmationCode}
+                  isLoading={checkingCode}
+                >
+                  Show my confirmation code
+                </Button>
+                {confirmation?.code && (
+                  <HStack>
+                    <Code p={3} rounded="md" fontSize="xl" letterSpacing="wider">
+                      {confirmation.code}
+                    </Code>
+                    <Button size="sm" onClick={() => navigator.clipboard.writeText(confirmation.code)}>
+                      Copy
+                    </Button>
+                  </HStack>
+                )}
+                {confirmation?.link && (
+                  <Text fontSize="sm" color="gray.600">
+                    Or{" "}
+                    <a href={confirmation.link} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>
+                      open Gmail's confirmation page
+                    </a>{" "}
+                    and click Confirm.
+                  </Text>
+                )}
+                {codeMessage && <Text fontSize="sm" color="gray.600">{codeMessage}</Text>}
+              </VStack>
+            </ListItem>
+          </OrderedList>
+
+          <Divider />
+
+          <Text fontWeight="semibold" fontSize="md">Then create the filter in Gmail:</Text>
 
           <OrderedList spacing={4} pl={2}>
             <ListItem>
@@ -221,12 +294,11 @@ export default function Onboarding() {
             <ListItem>
               <VStack align="stretch" spacing={1}>
                 <Text>
-                  On the next screen, check <strong>Forward it to</strong>, then paste your LISAP
-                  address from above.
+                  On the next screen, check <strong>Forward it to</strong>, then choose your LISAP
+                  address from the list.
                 </Text>
                 <Text fontSize="sm" color="gray.500">
-                  Gmail may send a confirmation email to that address — LISAP will handle it
-                  automatically.
+                  If it isn't in the list, finish the confirmation steps above first.
                 </Text>
               </VStack>
             </ListItem>
