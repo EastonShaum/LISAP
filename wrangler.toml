@@ -20,7 +20,7 @@ run_worker_first = ["/api/*", "/gmail/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "lisap"
-database_id = "REPLACE_WITH_DATABASE_ID"
+database_id = "411c31ff-4db0-4f1f-9bc1-46d6c8858df5"
 
 [triggers]
 crons = ["0 9 * * *"]   # renew the Gmail watch and clean up, daily
