@@ -1,13 +1,16 @@
 // Pure helpers for reading Gmail API message payloads. No network or database
 // access here, so these are easy to test (see test/parseEmail.test.js).
+// Uses only web APIs (atob, TextDecoder), so it runs in Workers and Node alike.
 
 export function getHeader(headers = [], name) {
   const h = headers.find((x) => x.name.toLowerCase() === name.toLowerCase());
   return h ? h.value : "";
 }
 
-function decodeBase64Url(data = "") {
-  return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+export function decodeBase64Url(data = "") {
+  const b64 = data.replace(/-/g, "+").replace(/_/g, "/");
+  const bytes = Uint8Array.from(atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, "=")), (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
 }
 
 function htmlToText(html) {

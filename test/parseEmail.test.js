@@ -6,7 +6,7 @@ import {
   getPlusTag,
   getServiceName,
   parseForwardingConfirmation,
-} from "../services/parseEmail.js";
+} from "../worker/src/parseEmail.js";
 
 const b64 = (s) => Buffer.from(s).toString("base64url");
 const h = (obj) => Object.entries(obj).map(([name, value]) => ({ name, value }));

@@ -1,0 +1,13 @@
+# Secrets for `npm run dev` (copy to .dev.vars, which is gitignored).
+# In production set each one with: npx wrangler secret put NAME
+
+# The shared LISAP Gmail account (refresh_token comes from `npm run gettoken`)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REFRESH_TOKEN=
+
+# Firebase service account JSON (or base64 of it), used to send push notifications
+FIREBASE_SERVICE_ACCOUNT=
+
+# Random string; the Pub/Sub push URL must end in ?token=<this>
+PUBSUB_TOKEN=

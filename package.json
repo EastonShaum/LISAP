@@ -1,17 +1,17 @@
 {
-  "name": "email-sms",
+  "name": "lisap",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Push streaming sign-in codes to everyone who shares the account",
+  "main": "worker/src/index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "gettoken": "node getToken.js",
-    "server": "nodemon index.js",
+    "build": "npm run build --prefix client",
     "client": "npm start --prefix client",
-    "tunnel": "cloudflared tunnel run lisap",
-    "watch": "node -e \"import('./services/gmailWatch.js').then(m=>m.startWatch()).then(()=>process.exit(0))\"",
-    "dev": "concurrently \"npm run server\" \"npm run client\" \"npm run tunnel\"",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "db:init": "wrangler d1 execute lisap --remote --file worker/schema.sql",
+    "gettoken": "node getToken.js",
+    "export-firestore": "node scripts/export-firestore.mjs",
     "test": "node --test test/*.test.js"
   },
   "keywords": [],
@@ -19,15 +19,9 @@
   "license": "ISC",
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.1",
-    "@google-cloud/pubsub": "^5.2.0",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
-    "express": "^5.2.1",
-    "firebase-admin": "^13.5.0",
-    "googleapis": "^168.0.0"
+    "firebase-admin": "^13.5.0"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1",
-    "nodemon": "^3.1.10"
+    "wrangler": "^4.165.0"
   }
 }
