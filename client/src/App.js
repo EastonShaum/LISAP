@@ -1,27 +1,26 @@
-import React from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Navbar from "./components/Navbar";
-import PasswordPage from "./pages/Password";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import Header from "./components/Header";
+import Overview from "./pages/Overview";
 import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import ManagePhones from "./pages/ManagePhones";
 import Onboarding from "./pages/Onboarding";
 import Join from "./pages/Join";
+import Dashboard from "./pages/Dashboard";
 
-function App() {
+export default function App() {
   return (
     <Router>
-      <Navbar />
-      <Routes>
-        <Route path="/" element={<PasswordPage />} />
-        <Route path="/login" element={<Login navigateTo="/onboarding" />} />
-        <Route path="/onboarding" element={<Onboarding />} />
-        <Route path="/join/:ownerTag" element={<Join />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/managephones" element={<ManagePhones />} />
-      </Routes>
+      <a className="skip" href="#main">Skip to content</a>
+      <Header />
+      <main id="main">
+        <Routes>
+          <Route path="/" element={<Overview />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/join/:ownerTag" element={<Join />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
     </Router>
   );
 }
-
-export default App;

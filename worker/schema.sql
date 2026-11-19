@@ -15,6 +15,12 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at       INTEGER
 );
 
+-- Email addresses allowed to create a new owner account (sign-up is invite-only)
+CREATE TABLE IF NOT EXISTS invites (
+  email      TEXT PRIMARY KEY,
+  created_at INTEGER
+);
+
 -- Friends who receive an owner's codes
 CREATE TABLE IF NOT EXISTS members (
   owner_email  TEXT NOT NULL,

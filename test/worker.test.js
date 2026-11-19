@@ -157,8 +157,15 @@ test("full flow: sign-in, invite, watch, codes, forwarding confirmation, dedupe"
   const wrongAud = await firebaseToken("uid-owner", "owner@gmail.com", { aud: "other-project" });
   assert.equal((await call("GET", "/api/users/me", { token: wrongAud })).status, 401, "wrong project");
 
-  let r = await call("POST", "/api/users/me", { token: owner, body: { phones: [], active: true } });
+  let r = await call("GET", "/api/users/me", { token: owner });
+  assert.equal(r.data.exists, false);
+  r = await call("POST", "/api/users/me", { token: owner, body: { active: true } });
+  assert.equal(r.status, 403, "not invited");
+  assert.equal(r.data.error, "invite_only");
+  await DB.prepare("INSERT INTO invites (email) VALUES ('owner@gmail.com')").run();
+  r = await call("POST", "/api/users/me", { token: owner, body: { phones: [], active: true } });
   assert.equal(r.status, 200);
+  assert.equal(r.data.exists, true);
   assert.equal(r.data.plusTag, "uid-owner");
   assert.equal(r.data.active, true);
 

@@ -42,7 +42,7 @@ The second version, Express on a laptop behind a Cloudflare Tunnel, was only up 
 ## Stack
 
 - **Backend:** Cloudflare Workers, D1 (SQLite), cron triggers, Gmail API, Google Cloud Pub/Sub, Firebase Cloud Messaging HTTP v1. No runtime dependencies.
-- **Client:** React, Chakra UI, Firebase Auth (Google sign-in), FCM web push with a service worker, served as Worker static assets.
+- **Client:** React with plain CSS (Bricolage Grotesque and Atkinson Hyperlegible), Firebase Auth (Google sign-in), FCM web push with a service worker, served as Worker static assets.
 
 ## Project layout
 
@@ -105,6 +105,14 @@ Then:
 
 1. **Pub/Sub subscription:** create a push subscription on the topic with the endpoint `https://lisap.app/gmail/webhook?token=<PUBSUB_TOKEN>`.
 2. **Start the Gmail watch:** run `curl -X POST "https://lisap.app/gmail/watch?token=<PUBSUB_TOKEN>"` once. After that, the daily cron renews it.
+
+### Invites
+
+Anyone can read the overview at lisap.app, but creating a new owner account is invite-only. Friends who open an owner's `/join/…` link can always sign up. To let someone set up their own shared account:
+
+```bash
+npx wrangler d1 execute lisap --remote --command "INSERT INTO invites (email, created_at) VALUES ('name@gmail.com', unixepoch() * 1000)"
+```
 
 ### Local development
 

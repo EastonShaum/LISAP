@@ -1,75 +1,99 @@
-import { Alert, AlertIcon, Button, VStack, Text } from "@chakra-ui/react";
-import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult } from "firebase/auth";
-import { auth, googleProvider } from "../firebase";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getRedirectResult } from "firebase/auth";
+import { auth } from "../firebase";
+import { api } from "../lib/api";
+import { useAuth, signInWithGoogle, signOutUser, authErrorMessage } from "../lib/auth";
 
-async function createUser(user) {
-  const idToken = await user.getIdToken();
-  await fetch(`${process.env.REACT_APP_API_URL || ""}/api/users/me`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${idToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ phones: [], active: true }),
-  });
-}
-
-const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-export default function Login({ navigateTo = "/dashboard" }) {
+export default function Login() {
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const [phase, setPhase] = useState("idle"); // idle | signing-in | checking | invite-only
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const checked = useRef(null);
 
   useEffect(() => {
-    // Process any pending redirect result first, then let onAuthStateChanged handle navigation
-    getRedirectResult(auth).catch(console.error);
+    getRedirectResult(auth).catch((err) => setError(authErrorMessage(err)));
+  }, []);
 
-    // onAuthStateChanged is the single source of truth —
-    // fires after popup, redirect, and on persisted session restore
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        try {
-          await createUser(user);
-          navigate(navigateTo);
-        } catch (err) {
-          console.error("createUser error:", err);
-        }
+  // Once signed in: existing users go to their dashboard, invited owners start
+  // setup, and anyone else sees that LISAP is invite-only.
+  useEffect(() => {
+    if (!user || checked.current === user.uid) return;
+    checked.current = user.uid;
+    (async () => {
+      setPhase("checking");
+      setError(null);
+      try {
+        const me = await api("/api/users/me");
+        if (me.data.exists) return navigate("/dashboard", { replace: true });
+        const created = await api("/api/users/me", { method: "POST", body: { active: true } });
+        if (created.ok) return navigate("/onboarding", { replace: true });
+        if (created.data.error === "invite_only") return setPhase("invite-only");
+        throw new Error(created.data.error);
+      } catch {
+        checked.current = null;
+        setPhase("idle");
+        setError("LISAP couldn’t load your account. Check your connection, then sign in again.");
       }
-    });
-    return unsubscribe;
-  }, [navigateTo, navigate]);
+    })();
+  }, [user, navigate]);
 
-  const login = async () => {
+  async function handleSignIn() {
     setError(null);
-    setLoading(true);
+    setPhase("signing-in");
     try {
-      if (isMobile) {
-        await signInWithRedirect(auth, googleProvider);
-      } else {
-        await signInWithPopup(auth, googleProvider);
-      }
+      await signInWithGoogle();
     } catch (err) {
-      console.error("Sign-in error:", err);
-      setError(`${err.code}: ${err.message}`);
-      setLoading(false);
+      setError(authErrorMessage(err));
+      setPhase("idle");
     }
-  };
+  }
+
+  async function useDifferentAccount() {
+    checked.current = null;
+    await signOutUser();
+    setPhase("idle");
+  }
+
+  if (loading || phase === "checking") {
+    return <p className="center-note" aria-live="polite">Checking your account…</p>;
+  }
+
+  if (phase === "invite-only" && user) {
+    return (
+      <div className="wrap page">
+        <h1 className="page-title">LISAP is invite-only right now</h1>
+        <p className="page-intro">
+          {user.email} isn’t on the invite list. If someone shares a streaming account with you, ask them for their
+          invite link and open it to join.
+        </p>
+        <div className="actions">
+          <button type="button" className="btn btn-quiet" onClick={useDifferentAccount}>
+            Use a different Google account
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <VStack spacing={6} p={10}>
-      <Text fontSize="2xl" fontWeight="bold">Sign in</Text>
-      <Button colorScheme="blue" onClick={login} isLoading={loading}>
-        Sign in with Google
-      </Button>
+    <div className="wrap page">
+      <h1 className="page-title">Sign in to LISAP</h1>
+      <p className="page-intro">
+        Use the Google account that gets your streaming service’s emails. If someone sent you an invite link, open
+        that link instead.
+      </p>
+      <div className="actions">
+        <button type="button" className="btn btn-primary" onClick={handleSignIn} disabled={phase === "signing-in"}>
+          {phase === "signing-in" ? "Opening Google…" : "Sign in with Google"}
+        </button>
+      </div>
       {error && (
-        <Alert status="error" borderRadius="md">
-          <AlertIcon />
+        <p className="alert" role="alert" style={{ marginTop: "1.5rem" }}>
           {error}
-        </Alert>
+        </p>
       )}
-    </VStack>
+    </div>
   );
 }

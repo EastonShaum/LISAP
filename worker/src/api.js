@@ -17,12 +17,13 @@ async function currentUser(request, env) {
 
 async function readUser(env, email) {
   const row = await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
-  if (!row) return { email, phones: [], active: false };
+  if (!row) return { email, exists: false, phones: [], active: false };
   const { results: members } = await env.DB.prepare("SELECT member_email FROM members WHERE owner_email = ?")
     .bind(email)
     .all();
   return {
     email: row.email,
+    exists: true,
     plusTag: row.plus_tag,
     phone: row.phone,
     phones: JSON.parse(row.phones || "[]"),
@@ -48,6 +49,13 @@ export async function handleApi(request, env, path) {
 
   if (path === "/api/users/me" && method === "POST") {
     const body = await request.json().catch(() => ({}));
+    // Invite-only: a new owner account needs an entry in `invites`. Existing
+    // users and friends who joined by link are already in `users`.
+    const known = await env.DB.prepare("SELECT 1 FROM users WHERE email = ?").bind(user.email).first();
+    if (!known) {
+      const invited = await env.DB.prepare("SELECT 1 FROM invites WHERE email = ?").bind(user.email).first();
+      if (!invited) return json({ error: "invite_only" }, 403);
+    }
     const phones = Array.isArray(body.phones) ? JSON.stringify(body.phones.map(String).slice(0, 20)) : null;
     // The Firebase UID doubles as the plus-address tag (lisap.code+<uid>@gmail.com)
     await env.DB.prepare(

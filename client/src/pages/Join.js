@@ -1,95 +1,98 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { Box, Button, Heading, Text, VStack, Spinner, Alert, AlertIcon } from "@chakra-ui/react";
-import { signInWithPopup, signInWithRedirect, getRedirectResult } from "firebase/auth";
-import { auth, googleProvider } from "../firebase";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { getRedirectResult } from "firebase/auth";
+import { auth } from "../firebase";
+import { api } from "../lib/api";
+import { useAuth, signInWithGoogle, signOutUser, authErrorMessage } from "../lib/auth";
+
+const PENDING = "lisap-join";
+
+function joinError(status) {
+  if (status === 404) return "This invite link doesn’t match an account. Ask the person who sent it for a new link.";
+  if (status === 400) return "This is your own invite link. Send it to the people who share your account.";
+  return "LISAP couldn’t add you to the account. Check your connection, then try again.";
+}
 
 export default function Join() {
   const { ownerTag } = useParams();
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const started = useRef(false);
 
-  // Handle redirect result on mobile after Google sign-in redirect
+  async function join() {
+    setBusy(true);
+    setError(null);
+    sessionStorage.removeItem(PENDING);
+    const res = await api(`/api/users/me/join/${encodeURIComponent(ownerTag)}`, { method: "POST" }).catch(() => ({ status: 0 }));
+    if (res.ok) return navigate("/dashboard", { replace: true });
+    setError(joinError(res.status));
+    setBusy(false);
+  }
+
   useEffect(() => {
-    getRedirectResult(auth).then(async (result) => {
-      if (result?.user) {
-        await connectToOwner(result.user);
-      }
-    }).catch((err) => setError("Sign-in failed. Please try again."));
+    getRedirectResult(auth).catch((err) => setError(authErrorMessage(err)));
   }, []);
 
-  async function connectToOwner(user) {
-    const idToken = await user.getIdToken();
-    const res = await fetch(
-      `${process.env.REACT_APP_API_URL || ""}/api/users/me/join/${ownerTag}`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${idToken}` },
-      }
-    );
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || "Could not connect your account.");
+  // Coming back from Google sign-in: finish joining without another tap.
+  useEffect(() => {
+    if (user && !started.current && sessionStorage.getItem(PENDING) === ownerTag) {
+      started.current = true;
+      join();
     }
-  }
+  }); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSignIn() {
-    setLoading(true);
     setError(null);
-
+    setBusy(true);
+    sessionStorage.setItem(PENDING, ownerTag);
     try {
-      if (isMobile) {
-        await signInWithRedirect(auth, googleProvider);
-        // Page will reload — result handled in useEffect above
-        return;
-      }
-
-      const result = await signInWithPopup(auth, googleProvider);
-      await connectToOwner(result.user);
-      navigate("/dashboard");
+      await signInWithGoogle();
     } catch (err) {
-      console.error(err);
-      setError(err.message || "Something went wrong. Please try again.");
-      setLoading(false);
+      sessionStorage.removeItem(PENDING);
+      setError(authErrorMessage(err));
+      setBusy(false);
     }
   }
 
+  if (loading) return <p className="center-note" aria-live="polite">Loading…</p>;
+
   return (
-    <Box maxW="480px" mx="auto" mt={20} p={8} bg="white" rounded="2xl" shadow="lg" textAlign="center">
-      <VStack spacing={6}>
-        <Heading size="lg">You're invited to LISAP</Heading>
+    <div className="wrap page">
+      <h1 className="page-title">You’re invited to LISAP</h1>
+      <p className="page-intro">
+        Someone shared their streaming account with you. Join, turn on notifications, and every sign-in code for that
+        account will show up on this phone within seconds.
+      </p>
 
-        <Text color="gray.600">
-          Someone shared their streaming account with you. Sign in with Google and you'll
-          automatically receive push notifications whenever a login code comes through —
-          no extra setup needed.
-        </Text>
+      {user ? (
+        <div className="panel">
+          <p>
+            Signed in as <strong>{user.email}</strong>.
+          </p>
+          <div className="actions">
+            <button type="button" className="btn btn-primary" onClick={join} disabled={busy}>
+              {busy ? "Joining…" : "Join this account"}
+            </button>
+            <button type="button" className="btn btn-quiet" onClick={signOutUser} disabled={busy}>
+              Use a different Google account
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="actions">
+          <button type="button" className="btn btn-primary" onClick={handleSignIn} disabled={busy}>
+            {busy ? "Opening Google…" : "Sign in with Google to join"}
+          </button>
+        </div>
+      )}
 
-        {error && (
-          <Alert status="error" borderRadius="md" textAlign="left">
-            <AlertIcon />
-            {error}
-          </Alert>
-        )}
-
-        <Button
-          colorScheme="blue"
-          size="lg"
-          width="full"
-          onClick={handleSignIn}
-          isLoading={loading}
-          loadingText="Connecting..."
-        >
-          Sign in with Google
-        </Button>
-
-        <Text fontSize="xs" color="gray.400">
-          By signing in you agree to receive push notifications for shared account login codes.
-        </Text>
-      </VStack>
-    </Box>
+      {error && (
+        <p className="alert" role="alert" style={{ marginTop: "1.5rem" }}>
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

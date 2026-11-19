@@ -1,415 +1,273 @@
-import { useState, useEffect } from "react";
-import {
-  Box,
-  Button,
-  Heading,
-  Text,
-  VStack,
-  HStack,
-  Progress,
-  Code,
-  OrderedList,
-  ListItem,
-  Divider,
-  Textarea,
-  Badge,
-} from "@chakra-ui/react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../firebase";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, Navigate } from "react-router-dom";
+import { api } from "../lib/api";
+import { useAuth, signOutUser } from "../lib/auth";
+import CopyButton from "../components/CopyButton";
 
-const TOTAL_STEPS = 5;
+const STEPS = ["Your account", "Allow forwarding", "Create the filter", "Invite people", "Done"];
+const SENDERS = ["disneyplus@mail.disneyplus.com", "info@account.netflix.com"];
 
 export default function Onboarding() {
-  const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  const [alias, setAlias] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [copiedAlias, setCopiedAlias] = useState(false);
-  const [copiedInvite, setCopiedInvite] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [confirmation, setConfirmation] = useState(null);
-  const [checkingCode, setCheckingCode] = useState(false);
-  const [codeMessage, setCodeMessage] = useState("");
+  const { user, loading } = useAuth();
+  const [me, setMe] = useState(null);
+  const [step, setStep] = useState(0);
+  const [checking, setChecking] = useState(false);
+  const [codeNote, setCodeNote] = useState("");
+  const heading = useRef(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      console.log("[Onboarding] onAuthStateChanged:", user?.email ?? "null");
-      setCurrentUser(user);
-      setAuthLoading(false);
-    });
-    return unsubscribe;
-  }, []);
+    if (user) api("/api/users/me").then((r) => setMe(r.data));
+  }, [user]);
 
-  // While Firebase resolves the session, show a spinner
-  if (authLoading) {
-    return (
-      <Box maxW="680px" mx="auto" mt={20} textAlign="center">
-        <Text color="gray.500">Loading...</Text>
-      </Box>
-    );
-  }
+  // Move focus to the new step's heading so screen readers hear the change.
+  useEffect(() => {
+    if (me) heading.current?.focus();
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // If auth resolved to null, the user is not signed in — send them to login
-  if (!currentUser) {
-    console.log("[Onboarding] No user after auth resolved — redirecting to /login");
-    navigate("/login");
-    return null;
-  }
+  if (loading || (user && !me)) return <p className="center-note" aria-live="polite">Loading…</p>;
+  if (!user || !me.exists) return <Navigate to="/login" replace />;
+  if (me.connectedTo) return <Navigate to="/dashboard" replace />;
 
-  const siteUrl = window.location.origin;
-  const ownerTag = currentUser?.uid;
-  const joinUrl = `${siteUrl}/join/${ownerTag}`;
+  const address = `lisap.code+${me.plusTag}@gmail.com`;
+  const joinUrl = `${window.location.origin}/join/${me.plusTag}`;
+  const invite = `I set up LISAP so you get the sign-in codes for our shared streaming account on your phone, without waiting on me.\n\nOpen this link, sign in with Google and turn on notifications:\n${joinUrl}`;
+  const confirmation = me.forwardingConfirmation;
 
-  function getInviteMessage() {
-    return `Hey! I set up LISAP so you can get login codes for our shared account straight to your phone — no more waiting on me.\n\nJust sign up using this link: ${joinUrl}\n\nThat's it. Once you're in, you'll automatically get a push notification whenever a passcode comes through.`;
-  }
-
-  async function handleSignup(e) {
-    e.preventDefault();
-    setLoading(true);
-
-    const uid = currentUser?.uid;
-    setAlias(`lisap.code+${uid}@gmail.com`);
-
-    setLoading(false);
-    setStep(2);
-  }
-
-  function openGmailFilters() {
-    window.open("https://mail.google.com/mail/u/0/#settings/filters", "_blank");
-  }
-
-  function copyToClipboard(text, which) {
-    navigator.clipboard.writeText(text);
-    if (which === "alias") {
-      setCopiedAlias(true);
-      setTimeout(() => setCopiedAlias(false), 2000);
-    } else {
-      setCopiedInvite(true);
-      setTimeout(() => setCopiedInvite(false), 2000);
+  async function checkCode() {
+    setChecking(true);
+    setCodeNote("");
+    const r = await api("/api/users/me").catch(() => null);
+    setChecking(false);
+    if (!r?.ok) return setCodeNote("LISAP couldn’t check for the code. Check your connection, then try again.");
+    setMe(r.data);
+    if (!r.data.forwardingConfirmation) {
+      setCodeNote("No code yet. It usually arrives within a minute of adding the address in Gmail.");
     }
   }
 
-  // Gmail emails a confirmation code to the LISAP address before it will
-  // forward anything there. The server saves that code on the user's record.
-  async function checkForConfirmationCode() {
-    setCheckingCode(true);
-    setCodeMessage("");
-    try {
-      const idToken = await currentUser.getIdToken();
-      const res = await fetch(`${process.env.REACT_APP_API_URL || ""}/api/users/me`, {
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
-      const data = await res.json();
-      if (data.forwardingConfirmation?.code || data.forwardingConfirmation?.link) {
-        setConfirmation(data.forwardingConfirmation);
-      } else {
-        setCodeMessage("No code yet. It usually arrives within a minute of adding the address in Gmail.");
-      }
-    } catch {
-      setCodeMessage("Couldn't reach LISAP. Try again in a moment.");
-    } finally {
-      setCheckingCode(false);
-    }
-  }
-
-  async function handleConfirmForwarding() {
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    setLoading(false);
-    setStep(4);
-  }
+  const next = () => setStep((s) => s + 1);
+  const back = () => setStep((s) => s - 1);
 
   return (
-    <Box maxW="680px" mx="auto" mt={10} mb={16} p={8} bg="white" rounded="2xl" shadow="lg">
-      <Heading size="lg" mb={6}>
-        LISAP — Love Is Sharing A Password
-      </Heading>
-
-      {/* Step indicators */}
-      <HStack spacing={3} mb={4}>
-        {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map((s) => (
-          <Box
-            key={s}
-            px={3}
-            py={1}
-            rounded="full"
-            bg={step === s ? "blue.600" : step > s ? "green.400" : "gray.200"}
-            color={step >= s ? "white" : "black"}
-            fontSize="sm"
-          >
-            Step {s}
-          </Box>
+    <div className="wrap page">
+      <ol className="progress" aria-hidden="true">
+        {STEPS.map((s, i) => (
+          <li key={s} data-state={i < step ? "done" : i === step ? "current" : "todo"} />
         ))}
-      </HStack>
+      </ol>
+      <p className="progress-label">
+        Step {step + 1} of {STEPS.length}: {STEPS[step]}
+      </p>
 
-      <Progress value={(step / TOTAL_STEPS) * 100} mb={8} colorScheme="blue" />
+      {step === 0 && (
+        <>
+          <h1 className="page-title" tabIndex={-1} ref={heading}>
+            Set up your shared account
+          </h1>
+          <p className="page-intro">
+            You’re the account owner: the person whose Gmail gets the Disney+ or Netflix emails. Setup takes about five
+            minutes, then the people you invite get every code automatically.
+          </p>
+          <div className="panel">
+            <p>
+              Signed in as <strong>{user.email}</strong>. This should be the Gmail address your streaming service sends
+              codes to.
+            </p>
+            <div className="actions">
+              <button type="button" className="btn btn-primary" onClick={next}>
+                Continue as {user.email}
+              </button>
+              <button type="button" className="btn btn-quiet" onClick={signOutUser}>
+                Use a different Google account
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
-      {/* ── STEP 1 — Account ── */}
       {step === 1 && (
-        <form onSubmit={handleSignup}>
-          <VStack spacing={5} align="stretch">
-            <Text fontSize="md">
-              Welcome! You're setting up LISAP as the <strong>account owner</strong> — the person
-              who pays for Disney Plus or Netflix. Your friends will get their own accounts in the
-              next step.
-            </Text>
-            <Text fontSize="md">
-              First, confirm you're signed in with the Google account that receives your streaming
-              service emails. You're currently signed in as:
-            </Text>
-            <Code p={3} rounded="md" fontSize="md">
-              {currentUser?.email || "Not signed in"}
-            </Code>
-            <Text fontSize="sm" color="gray.500">
-              If that's not right, sign out and log in with the correct account.
-            </Text>
-            <Button type="submit" colorScheme="blue" isLoading={loading}>
-              That's my account — continue
-            </Button>
-          </VStack>
-        </form>
+        <>
+          <h1 className="page-title" tabIndex={-1} ref={heading}>
+            Let Gmail forward to LISAP
+          </h1>
+          <p className="page-intro">
+            Gmail only forwards to addresses you’ve confirmed. This is your personal LISAP address:
+          </p>
+          <div className="panel">
+            <div className="copy-field">
+              <span className="copy-value" translate="no">
+                {address}
+              </span>
+              <CopyButton text={address} label="Copy address" />
+            </div>
+            <ol className="checklist">
+              <li>
+                In Gmail on a computer, open <span className="ui">Settings</span>, then{" "}
+                <span className="ui">See all settings</span>, then the{" "}
+                <span className="ui">Forwarding and POP/IMAP</span> tab.
+              </li>
+              <li>
+                Select <span className="ui">Add a forwarding address</span>, paste your LISAP address, then select{" "}
+                <span className="ui">Next</span> and <span className="ui">Proceed</span>. Gmail sends LISAP a
+                confirmation code.
+              </li>
+              <li>Get the code here and type it into Gmail’s box, then select <span className="ui">Verify</span>.</li>
+              <li>
+                Leave <span className="ui">Disable forwarding</span> selected. The filter in the next step forwards only
+                the streaming emails, not everything.
+              </li>
+            </ol>
+            <div className="actions">
+              <button type="button" className="btn btn-quiet btn-small" onClick={checkCode} disabled={checking}>
+                {checking ? "Checking…" : confirmation ? "Check for a newer code" : "Show my confirmation code"}
+              </button>
+              <a
+                className="btn btn-quiet btn-small"
+                href="https://mail.google.com/mail/u/0/#settings/fwdandpop"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Gmail forwarding settings
+              </a>
+            </div>
+            {confirmation?.code && (
+              <div className="copy-field">
+                <span className="copy-value big-code" translate="no">
+                  {confirmation.code}
+                </span>
+                <CopyButton text={confirmation.code} label="Copy code" />
+              </div>
+            )}
+            {confirmation?.link && (
+              <p className="small muted">
+                Or <a href={confirmation.link} target="_blank" rel="noreferrer">open Gmail’s confirmation page</a> and
+                select Confirm.
+              </p>
+            )}
+            <p className="small muted" aria-live="polite">
+              {codeNote}
+            </p>
+          </div>
+          <div className="actions" style={{ marginTop: "1.5rem" }}>
+            <button type="button" className="btn btn-primary" onClick={next}>
+              Gmail confirmed the address
+            </button>
+            <button type="button" className="btn btn-quiet" onClick={back}>
+              Back
+            </button>
+          </div>
+        </>
       )}
 
-      {/* ── STEP 2 — Gmail Filter Setup ── */}
       {step === 2 && (
-        <VStack spacing={5} align="stretch">
-          <Text fontSize="md">
-            You'll set up a Gmail filter that automatically forwards passcode emails from Disney Plus
-            or Netflix to your unique LISAP address. This takes about 2 minutes.
-          </Text>
-
-          <Box bg="blue.50" p={4} rounded="lg" borderLeft="4px solid" borderColor="blue.400">
-            <Text fontWeight="semibold" mb={2}>Your unique forwarding address:</Text>
-            <Code
-              display="block"
-              p={3}
-              rounded="md"
-              fontSize="sm"
-              wordBreak="break-all"
-              bg="white"
-            >
-              {alias}
-            </Code>
-            <Button
-              mt={3}
-              size="sm"
-              colorScheme="blue"
-              onClick={() => copyToClipboard(alias, "alias")}
-            >
-              {copiedAlias ? "Copied!" : "Copy address"}
-            </Button>
-          </Box>
-
-          <Divider />
-
-          <Text fontWeight="semibold" fontSize="md">First, let Gmail forward to this address:</Text>
-
-          <OrderedList spacing={3} pl={2}>
-            <ListItem>
-              In Gmail, open <strong>Settings → See all settings → Forwarding and POP/IMAP</strong>.
-            </ListItem>
-            <ListItem>
-              Click <strong>Add a forwarding address</strong>, paste your LISAP address, and click{" "}
-              <strong>Next → Proceed</strong>. Gmail sends a confirmation code to LISAP.
-            </ListItem>
-            <ListItem>
-              <VStack align="stretch" spacing={2}>
-                <Text>Get the code here, then type it into the box Gmail shows and click <strong>Verify</strong>:</Text>
-                <Button
-                  size="sm"
-                  alignSelf="flex-start"
-                  onClick={checkForConfirmationCode}
-                  isLoading={checkingCode}
-                >
-                  Show my confirmation code
-                </Button>
-                {confirmation?.code && (
-                  <HStack>
-                    <Code p={3} rounded="md" fontSize="xl" letterSpacing="wider">
-                      {confirmation.code}
-                    </Code>
-                    <Button size="sm" onClick={() => navigator.clipboard.writeText(confirmation.code)}>
-                      Copy
-                    </Button>
-                  </HStack>
-                )}
-                {confirmation?.link && (
-                  <Text fontSize="sm" color="gray.600">
-                    Or{" "}
-                    <a href={confirmation.link} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>
-                      open Gmail's confirmation page
-                    </a>{" "}
-                    and click Confirm.
-                  </Text>
-                )}
-                {codeMessage && <Text fontSize="sm" color="gray.600">{codeMessage}</Text>}
-              </VStack>
-            </ListItem>
-          </OrderedList>
-
-          <Divider />
-
-          <Text fontWeight="semibold" fontSize="md">Then create the filter in Gmail:</Text>
-
-          <OrderedList spacing={4} pl={2}>
-            <ListItem>
-              <Text>
-                Open Gmail and click the <strong>Settings gear</strong> (top right) → then{" "}
-                <strong>See all settings</strong>.
-              </Text>
-            </ListItem>
-            <ListItem>
-              <Text>
-                Go to the <strong>Filters and Blocked Addresses</strong> tab, then click{" "}
-                <strong>Create a new filter</strong>.
-              </Text>
-            </ListItem>
-            <ListItem>
-              <VStack align="stretch" spacing={2}>
-                <Text>
-                  In the <strong>From</strong> field, enter the sender address(es) for your
-                  streaming service:
-                </Text>
-                <HStack wrap="wrap" spacing={2}>
-                  <Badge colorScheme="purple" fontSize="sm" px={2} py={1}>
-                    disneyplus@mail.disneyplus.com
-                  </Badge>
-                  <Badge colorScheme="red" fontSize="sm" px={2} py={1}>
-                    info@account.netflix.com
-                  </Badge>
-                </HStack>
-                <Text fontSize="sm" color="gray.600">
-                  Only add the ones that apply to you. You can create a separate filter for each.
-                </Text>
-              </VStack>
-            </ListItem>
-            <ListItem>
-              <Text>
-                Click <strong>Create filter</strong> (bottom right of the dialog).
-              </Text>
-            </ListItem>
-            <ListItem>
-              <VStack align="stretch" spacing={1}>
-                <Text>
-                  On the next screen, check <strong>Forward it to</strong>, then choose your LISAP
-                  address from the list.
-                </Text>
-                <Text fontSize="sm" color="gray.500">
-                  If it isn't in the list, finish the confirmation steps above first.
-                </Text>
-              </VStack>
-            </ListItem>
-            <ListItem>
-              <Text>
-                Click <strong>Create filter</strong> to save. You're done!
-              </Text>
-            </ListItem>
-          </OrderedList>
-
-          <Button
-            variant="outline"
-            onClick={openGmailFilters}
-            alignSelf="flex-start"
-          >
-            Open Gmail Settings ↗
-          </Button>
-
-          <Divider />
-
-          <Button colorScheme="green" onClick={() => setStep(3)}>
-            I've set up the filter — continue
-          </Button>
-        </VStack>
+        <>
+          <h1 className="page-title" tabIndex={-1} ref={heading}>
+            Create the filter
+          </h1>
+          <p className="page-intro">The filter sends only your streaming service’s emails to LISAP.</p>
+          <div className="panel">
+            <ol className="checklist">
+              <li>
+                In Gmail settings, open the <span className="ui">Filters and Blocked Addresses</span> tab and select{" "}
+                <span className="ui">Create a new filter</span>.
+              </li>
+              <li>
+                In <span className="ui">From</span>, paste the senders for the services you use. This covers both:
+                <div className="copy-field" style={{ marginTop: "0.5rem" }}>
+                  <span className="copy-value small" translate="no">
+                    {SENDERS.join(" OR ")}
+                  </span>
+                  <CopyButton text={SENDERS.join(" OR ")} />
+                </div>
+              </li>
+              <li>
+                Select <span className="ui">Create filter</span>, check <span className="ui">Forward it to</span>, and
+                choose your LISAP address.
+              </li>
+              <li>
+                Select <span className="ui">Create filter</span> again to save it.
+              </li>
+            </ol>
+            <div className="actions">
+              <a
+                className="btn btn-quiet btn-small"
+                href="https://mail.google.com/mail/u/0/#settings/filters"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Gmail filters
+              </a>
+            </div>
+          </div>
+          <div className="actions" style={{ marginTop: "1.5rem" }}>
+            <button type="button" className="btn btn-primary" onClick={next}>
+              The filter is saved
+            </button>
+            <button type="button" className="btn btn-quiet" onClick={back}>
+              Back
+            </button>
+          </div>
+        </>
       )}
 
-      {/* ── STEP 3 — Confirm Forwarding ── */}
       {step === 3 && (
-        <VStack spacing={5} align="stretch">
-          <Text fontSize="md">
-            To make sure everything is working, send yourself a test email or wait for your next
-            passcode from Disney Plus or Netflix.
-          </Text>
-          <Box bg="gray.50" p={4} rounded="lg">
-            <Text fontWeight="semibold" mb={1}>Quick test:</Text>
-            <OrderedList spacing={2} pl={2}>
-              <ListItem>Open Disney Plus or Netflix and try to log in from a new device or browser.</ListItem>
-              <ListItem>They'll send a passcode email to your Gmail.</ListItem>
-              <ListItem>Gmail forwards it to your LISAP address, and you'll get a push notification.</ListItem>
-            </OrderedList>
-          </Box>
-          <Text fontSize="sm" color="gray.500">
-            Once you've confirmed a passcode came through, click below. If you'd rather skip
-            testing for now, you can also just continue.
-          </Text>
-          <Button colorScheme="blue" onClick={handleConfirmForwarding} isLoading={loading}>
-            Looks good — continue
-          </Button>
-        </VStack>
+        <>
+          <h1 className="page-title" tabIndex={-1} ref={heading}>
+            Invite the people who share it
+          </h1>
+          <p className="page-intro">
+            Send them this message. They sign in and turn on notifications; there’s nothing else for them to set up.
+          </p>
+          <div className="panel">
+            <p className="invite-text">{invite}</p>
+            <div className="actions">
+              <CopyButton text={invite} label="Copy message" className="btn btn-primary btn-small" />
+              {navigator.share && (
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-small"
+                  onClick={() => navigator.share({ text: invite }).catch(() => {})}
+                >
+                  Share
+                </button>
+              )}
+            </div>
+            <p className="small muted">Your invite link is also on your dashboard.</p>
+          </div>
+          <div className="actions" style={{ marginTop: "1.5rem" }}>
+            <button type="button" className="btn btn-primary" onClick={next}>
+              Continue
+            </button>
+            <button type="button" className="btn btn-quiet" onClick={back}>
+              Back
+            </button>
+          </div>
+        </>
       )}
 
-      {/* ── STEP 4 — Invite Friends ── */}
       {step === 4 && (
-        <VStack spacing={5} align="stretch">
-          <Text fontSize="md">
-            Now invite the people who share your account. Send them this message — they'll sign up
-            for their own LISAP account and start receiving push notifications automatically.
-          </Text>
-
-          <Box bg="gray.50" p={4} rounded="lg" border="1px solid" borderColor="gray.200">
-            <Textarea
-              value={getInviteMessage()}
-              isReadOnly
-              rows={7}
-              fontSize="sm"
-              resize="none"
-              bg="white"
-            />
-          </Box>
-
-          <Button
-            colorScheme="blue"
-            alignSelf="flex-start"
-            onClick={() => copyToClipboard(getInviteMessage(), "invite")}
-          >
-            {copiedInvite ? "Copied!" : "Copy message"}
-          </Button>
-
-          <Text fontSize="sm" color="gray.500">
-            You can always reshare this from your dashboard. Your friends just need to sign up —
-            no additional setup required on their end.
-          </Text>
-
-          <Divider />
-
-          <Button colorScheme="green" onClick={() => setStep(5)}>
-            Done — finish setup
-          </Button>
-        </VStack>
+        <>
+          <h1 className="page-title" tabIndex={-1} ref={heading}>
+            You’re set up
+          </h1>
+          <p className="page-intro">
+            The next time Disney+ or Netflix emails you a code, LISAP sends it to everyone on the account. Turn on
+            notifications on your dashboard to get codes on this device too.
+          </p>
+          <div className="panel">
+            <h2 className="panel-title">Try it</h2>
+            <p className="muted">
+              Sign in to Disney+ or Netflix on a new device or browser and ask for a code. It should reach your phone a
+              few seconds after the email lands in Gmail.
+            </p>
+          </div>
+          <div className="actions" style={{ marginTop: "1.5rem" }}>
+            <Link className="btn btn-primary" to="/dashboard">
+              Go to the dashboard
+            </Link>
+          </div>
+        </>
       )}
-
-      {/* ── STEP 5 — Complete ── */}
-      {step === 5 && (
-        <VStack spacing={5} align="center" textAlign="center">
-          <Text fontSize="4xl">🎉</Text>
-          <Heading size="md">You're all set!</Heading>
-          <Text color="gray.600" maxW="420px">
-            Whenever a passcode email hits your inbox, LISAP will push it straight to your phone.
-            No more copy-pasting codes.
-          </Text>
-          <Button
-            colorScheme="green"
-            size="lg"
-            onClick={() => {
-              window.location.href = "/dashboard";
-            }}
-          >
-            Go to Dashboard
-          </Button>
-        </VStack>
-      )}
-    </Box>
+    </div>
   );
 }
