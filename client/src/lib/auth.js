@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from "firebase/auth";
+import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
 
 // { user, loading }: loading stays true until Firebase has restored any saved session.
@@ -9,11 +9,12 @@ export function useAuth() {
   return state;
 }
 
-const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-// Popups are unreliable on phones, so phones leave the page and come back.
+// Popup everywhere, phones included. Redirect sign-in loops on iPhone: the
+// result is stored on the Firebase auth domain (firebaseapp.com), and Safari
+// blocks that site's storage once you're back on lisap.app. Must be called
+// straight from a tap, with no await before it, or the popup gets blocked.
 export function signInWithGoogle() {
-  return isMobile ? signInWithRedirect(auth, googleProvider) : signInWithPopup(auth, googleProvider);
+  return signInWithPopup(auth, googleProvider);
 }
 
 export const signOutUser = () => signOut(auth);
